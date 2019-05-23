@@ -1,0 +1,9 @@
+/*
+This is an example Overpass query.
+Try it out by pressing the Run button above!
+You can find more examples with the Load tool.
+*/
+node
+  [highway=bus_stop]
+  (51.553178, 10.25144, 51.90484, 10.79796);
+out;
