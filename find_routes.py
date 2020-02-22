@@ -5,9 +5,9 @@ import time
 radius_min = 0
 radius_max = 40000
 maximum_daily_distance = 45000
-days = 3
-bus_days = 3
-min_stempel = 9
+days = 1
+bus_days = 1
+min_stempel = 2
 
 driver = GraphDatabase.driver("bolt://localhost:7687", auth=("neo4j", "12345678"))
 with driver.session() as session:
@@ -32,8 +32,7 @@ with driver.session() as session:
     haltestellen = {}
     query = "WITH point({{longitude: {origin_lon}, latitude: {origin_lat}}}) AS origin " \
             "MATCH (n:Haltestelle) " \
-            "WHERE distance(origin, point({{longitude: n.longitude, latitude: n.latitude}})) < {radius_max} " \
-            "AND (distance(origin, point({{longitude: n.longitude, latitude: n.latitude}})) > {radius_min} OR n.name = 'Wohnung') " \
+            "WHERE ID(n) = 448 " \
             "RETURN ID(n) AS id, n.latitude AS lat, n.longitude AS lon, n.name AS name" \
             "".format(origin_lon=origin[2], origin_lat=origin[1], radius_min=radius_min, radius_max=radius_max)
     for result in session.run(query):
