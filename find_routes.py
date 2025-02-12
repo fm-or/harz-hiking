@@ -1,4 +1,4 @@
-from neo4j.v1 import GraphDatabase
+from neo4j import GraphDatabase
 from gurobipy import Model, GRB, quicksum
 import time
 
@@ -11,7 +11,7 @@ min_stempel = 2
 
 driver = GraphDatabase.driver("bolt://localhost:7687", auth=("neo4j", "12345678"))
 with driver.session() as session:
-    query = "MATCH (n:Startpunkt) RETURN ID(n) AS id, n.latitude AS lat, n.longitude AS lon, n.name AS name"
+    query = "MATCH (n:start) RETURN elementId(n) AS id, n.latitude AS lat, n.longitude AS lon, n.name AS name"
     results = session.run(query)
     result = results.__iter__().__next__()
     id = result.get("id")
@@ -20,7 +20,11 @@ with driver.session() as session:
     name = result.get("name")
     origin = (id, lat, lon, name)
 
-    query = "MATCH (n:Haltestelle) WHERE n.name = 'Wohnung' RETURN ID(n) AS id, n.latitude AS lat, n.longitude AS lon, n.name AS name"
+    query = "MATCH (n:BusStop) " \
+            "WITH n, point.distance(point({{longitude: {origin_lon}, latitude: {origin_lat}}}), point({{longitude: n.longitude, latitude: n.latitude}})) AS distance " \
+            "ORDER BY distance LIMIT 1 " \
+            "RETURN elementId(n) AS id, n.latitude AS lat, n.longitude AS lon, n.name AS name" \
+            "".format(origin_lon=origin[2], origin_lat=origin[1])
     results = session.run(query)
     result = results.__iter__().__next__()
     id = result.get("id")
@@ -31,9 +35,9 @@ with driver.session() as session:
 
     haltestellen = {}
     query = "WITH point({{longitude: {origin_lon}, latitude: {origin_lat}}}) AS origin " \
-            "MATCH (n:Haltestelle) " \
-            "WHERE ID(n) = 448 " \
-            "RETURN ID(n) AS id, n.latitude AS lat, n.longitude AS lon, n.name AS name" \
+            "MATCH (n:BusStop) " \
+            "WHERE elementId(n) = 448 " \
+            "RETURN elementId(n) AS id, n.latitude AS lat, n.longitude AS lon, n.name AS name" \
             "".format(origin_lon=origin[2], origin_lat=origin[1], radius_min=radius_min, radius_max=radius_max)
     for result in session.run(query):
         id = result.get("id")
@@ -44,9 +48,9 @@ with driver.session() as session:
 
     stempelstellen = {}
     query = "WITH point({{longitude: {origin_lon}, latitude: {origin_lat}}}) AS origin " \
-            "MATCH (n:Stempelstelle) " \
-            "WHERE distance(origin, point({{longitude: n.longitude, latitude: n.latitude}})) < {radius} " \
-            "RETURN ID(n) AS id, n.latitude AS lat, n.longitude AS lon, n.name AS name " \
+            "MATCH (n:StampPoint) " \
+            "WHERE point.distance(origin, point({{longitude: n.longitude, latitude: n.latitude}})) < {radius} " \
+            "RETURN elementId(n) AS id, n.latitude AS lat, n.longitude AS lon, n.name AS name " \
             "".format(origin_lon=origin[2], origin_lat=origin[1], radius=radius_max)
     for result in session.run(query):
         id = result.get("id")
@@ -59,7 +63,7 @@ with driver.session() as session:
     edges = {}
     reverse_edges = {}
     query = "MATCH (s)-[r:TO]->(t) " \
-            "RETURN ID(s) AS from_id, r.distance AS distance, ID(t) AS to_id"
+            "RETURN elementId(s) AS from_id, r.distance AS distance, elementId(t) AS to_id"
     for result in session.run(query):
         from_id = result.get("from_id")
         distance = result.get("distance")
@@ -130,7 +134,11 @@ with driver.session() as session:
             for stempelstelle_2 in stempelstellen:
                 if stempelstelle_2 != stempelstelle:
                     z[day, stempelstelle, stempelstelle_2] = model.addVar(vtype=GRB.CONTINUOUS)
+                    if stempelstelle[-3:] == '517' and stempelstelle_2[-3:] == '516':
+                        print("test1", day, stempelstelle, stempelstelle_2)
     model.update()
+
+    print("TEST1", z[0, '4:8f59340a-713c-402f-ab89-28461c261d46:517', '4:8f59340a-713c-402f-ab89-28461c261d46:516'])
 
     '''model.addConstr(n[0, 700] == 1)
     model.addConstr(x[0, 700] == 1)
@@ -152,9 +160,11 @@ with driver.session() as session:
             model.addConstr(z[day, haltestelle] <= n[day, haltestelle]*3*min_stempel)
             model.addConstr(z[day, haltestelle] <= x[day, haltestelle])
             model.addConstr(z[day, haltestelle] >= x[day, haltestelle]-3*min_stempel*(1 - n[day, haltestelle]))'''
-        for stempelstelle in stempelstellen.keys():
+        for stempelstelle in stempelstellen:
             for from_id in stempelstellen:
                 if from_id != stempelstelle:
+                    if from_id[-3:] == '517' and stempelstelle[-3:] == '516':
+                        print("test2", day, from_id, stempelstelle)
                     model.addConstr(z[day, from_id, stempelstelle] <= e[day, from_id, stempelstelle]*3*min_stempel)
                     model.addConstr(z[day, from_id, stempelstelle] <= x[day, from_id] + 1)
                     model.addConstr(z[day, from_id, stempelstelle] >= x[day, from_id] + 1 - 3*min_stempel*(1 - e[day, from_id, stempelstelle]))
@@ -196,12 +206,12 @@ with driver.session() as session:
     if eliminate_subtours:
         start = time.time()
         subtours = 0
-        '''query = "MATCH (o:Startpunkt) " \
-                "MATCH (o)<-[ro1:TO]-(n1:Stempelstelle)-[r1:TO]->(n2:Stempelstelle)-[r2:TO]->(n1) " \
+        '''query = "MATCH (o:start) " \
+                "MATCH (o)<-[ro1:TO]-(n1:StampPoint)-[r1:TO]->(n2:StampPoint)-[r2:TO]->(n1) " \
                 "MATCH (o)<-[ro2:TO]-(n2) " \
                 "WHERE ro1.distance < {radius} AND ro2.distance < {radius} " \
                 "AND r1.distance + r2.distance <= 16000 " \
-                "RETURN ID(n1) AS id_1, ID(n2) AS id_2 " \
+                "RETURN elementId(n1) AS id_1, elementId(n2) AS id_2 " \
                 "".format(radius=radius_max)
         for result in session.run(query):
             id_1 = result.get("id_1")
@@ -219,13 +229,13 @@ with driver.session() as session:
 
         start = time.time()
         subtours = 0
-        query = "MATCH (o:Startpunkt) " \
-                "MATCH (o)<-[ro1:TO]-(n1:Stempelstelle)-[r1:TO]->(n2:Stempelstelle)-[r2:TO]->(n3:Stempelstelle)-[r3:TO]->(n1) " \
+        query = "MATCH (o:start) " \
+                "MATCH (o)<-[ro1:TO]-(n1:StampPoint)-[r1:TO]->(n2:StampPoint)-[r2:TO]->(n3:StampPoint)-[r3:TO]->(n1) " \
                 "MATCH (o)<-[ro2:TO]-(n2) " \
                 "MATCH (o)<-[ro3:TO]-(n3) " \
                 "WHERE ro1.distance < {radius} AND ro2.distance < {radius} AND ro3.distance < {radius} " \
                 "AND r1.distance + r2.distance + r3.distance <= 32000 " \
-                "RETURN ID(n1) AS id_1, ID(n2) AS id_2, ID(n3) AS id_3 " \
+                "RETURN elementId(n1) AS id_1, elementId(n2) AS id_2, elementId(n3) AS id_3 " \
                 "".format(radius=radius_max)
         for result in session.run(query):
             id_1 = result.get("id_1")
@@ -246,14 +256,14 @@ with driver.session() as session:
 
         start = time.time()
         subtours = 0
-        query = "MATCH (o:Startpunkt) " \
-                "MATCH (o)<-[ro1:TO]-(n1:Stempelstelle)-[r1:TO]->(n2:Stempelstelle)-[r2:TO]->(n3:Stempelstelle)-[r3:TO]->(n4:Stempelstelle)-[r4:TO]->(n1) " \
+        query = "MATCH (o:start) " \
+                "MATCH (o)<-[ro1:TO]-(n1:StampPoint)-[r1:TO]->(n2:StampPoint)-[r2:TO]->(n3:StampPoint)-[r3:TO]->(n4:StampPoint)-[r4:TO]->(n1) " \
                 "MATCH (o)<-[ro2:TO]-(n2) " \
                 "MATCH (o)<-[ro3:TO]-(n3) " \
                 "MATCH (o)<-[ro4:TO]-(n4) " \
                 "WHERE ro1.distance < {radius} AND ro2.distance < {radius} AND ro3.distance < {radius} AND ro4.distance < {radius} " \
                 "AND r1.distance + r2.distance + r3.distance + r4.distance <= 40000 " \
-                "RETURN ID(n1) AS id_1, ID(n2) AS id_2, ID(n3) AS id_3, ID(n4) AS id_4 " \
+                "RETURN elementId(n1) AS id_1, elementId(n2) AS id_2, elementId(n3) AS id_3, elementId(n4) AS id_4 " \
                 "".format(radius=radius_max)
         for result in session.run(query):
             id_1 = result.get("id_1")
@@ -277,15 +287,15 @@ with driver.session() as session:
 
         '''subtours = 0
         start = time.time()
-        query = "MATCH (o:Startpunkt) " \
-                "MATCH (o)<-[ro1:TO]-(n1:Stempelstelle)-[r1:TO]->(n2:Stempelstelle)-[r2:TO]->(n3:Stempelstelle)-[r3:TO]->(n4:Stempelstelle)-[r4:TO]->(n5:Stempelstelle)-[r5:TO]->(n1) " \
+        query = "MATCH (o:start) " \
+                "MATCH (o)<-[ro1:TO]-(n1:StampPoint)-[r1:TO]->(n2:StampPoint)-[r2:TO]->(n3:StampPoint)-[r3:TO]->(n4:StampPoint)-[r4:TO]->(n5:StampPoint)-[r5:TO]->(n1) " \
                 "MATCH (o)<-[ro2:TO]-(n2) " \
                 "MATCH (o)<-[ro3:TO]-(n3) " \
                 "MATCH (o)<-[ro4:TO]-(n4) " \
                 "MATCH (o)<-[ro5:TO]-(n5) " \
                 "WHERE ro1.distance < {radius} AND ro2.distance < {radius} AND ro3.distance < {radius} AND ro4.distance < {radius} AND ro5.distance < {radius} " \
                 "AND r1.distance + r2.distance + r3.distance + r4.distance + r5.distance < 30000 " \
-                "RETURN ID(n1) AS id_1, ID(n2) AS id_2, ID(n3) AS id_3, ID(n4) AS id_4, ID(n5) AS id_5 " \
+                "RETURN elementId(n1) AS id_1, elementId(n2) AS id_2, elementId(n3) AS id_3, elementId(n4) AS id_4, elementId(n5) AS id_5 " \
                 "".format(radius=radius_max)
         for result in session.run(query):
             id_1 = result.get("id_1")

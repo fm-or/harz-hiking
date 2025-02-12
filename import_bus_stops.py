@@ -1,4 +1,4 @@
-from neo4j.v1 import GraphDatabase
+from neo4j import GraphDatabase
 import json
 
 
@@ -12,8 +12,8 @@ with driver.session() as session:
             name = feature['properties']['name']
             longitude, latitude = feature['geometry']['coordinates']
 
-            query = "MATCH (home:Startpunkt) WITH point({{latitude: home.latitude, longitude: home.longitude}}) AS home " \
-                    "WHERE distance(home, point({{latitude: {latitude}, longitude: {longitude}}})) < 40000 " \
-                    "MERGE (n:Haltestelle {{name: '{name}'}}) ON CREATE SET n.latitude = {latitude}, n.longitude = {longitude}" \
+            query = "MATCH (home:start) WITH point({{latitude: home.latitude, longitude: home.longitude}}) AS home " \
+                    "WHERE point.distance(home, point({{latitude: {latitude}, longitude: {longitude}}})) < 40000 " \
+                    "MERGE (n:BusStop {{name: '{name}'}}) ON CREATE SET n.latitude = {latitude}, n.longitude = {longitude}" \
                     "".format(latitude=latitude, longitude=longitude, name=name)
             session.run(query)
