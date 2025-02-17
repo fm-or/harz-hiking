@@ -23,6 +23,8 @@ with driver.session() as session:
     hull_points = points[hull.vertices]
     convex_hull_polygon = Polygon(hull_points)
 
+    print('convex_hull_polygon:', hull_points)
+
     to_delete = []
     query = "MATCH (n:BusStop) " \
             "RETURN elementId(n) AS id, n.latitude AS lat, n.longitude AS lon, n.name AS name ORDER BY id ASC"
