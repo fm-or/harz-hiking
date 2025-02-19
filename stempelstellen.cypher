@@ -7,3 +7,8 @@ WITH home, toInteger(line[0]) AS id, line[1] AS name, split(line[2], " ") AS cor
 WITH home, id, name, toFloat(substring(cords[0], 1)) AS latitude, toFloat(substring(cords[1], 1)) AS longitude
 WHERE point.distance(home, point({latitude: latitude, longitude: longitude})) < 40000
 MERGE (n:StampPoint {id: id}) ON CREATE SET n.latitude = latitude, n.longitude = longitude, n.name = name
+
+
+LOAD CSV FROM "file:///HWN2024.csv" AS line SKIP 1
+WITH toInteger(line[0]) AS id, line[1] AS name, toFloat(substring(line[3], 0)) AS latitude, toFloat(substring(line[2], 0)) AS longitude
+MERGE (n:StampPoint {id: id}) ON CREATE SET n.latitude = latitude, n.longitude = longitude, n.name = name

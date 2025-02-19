@@ -1,16 +1,18 @@
 from neo4j import GraphDatabase
 import requests
-import time
+from time import perf_counter
 import osmnx as ox
 import networkx as nx
 
 
 origin = {"lon": 10.337343, "lat": 51.803052}
-radius = 15000
+radius = 20000
 import_bus_stops_stamp_points = True
 import_stamp_points_origin = True
 import_stamp_points_stamp_points = True
+threads=1
 
+start_time = perf_counter()
 driver = GraphDatabase.driver("bolt://localhost:7687", auth=("neo4j", "12345678"))
 with driver.session() as session:
     bus_stops = []
@@ -52,7 +54,8 @@ with driver.session() as session:
         print("Berechne kürzeste Wege")
         bus_stops_stamp_points_orig = [bus_stops_nodes[i] for i in range(len(bus_stops)) for j in range(len(stamp_points))]
         bus_stops_stamp_points_dest = [stamp_points_nodes[j] for i in range(len(bus_stops)) for j in range(len(stamp_points))]
-        bus_stops_stamp_points_routes = ox.routing.shortest_path(G, orig=bus_stops_stamp_points_orig, dest=bus_stops_stamp_points_dest, weight='length', cpus=1)
+        bus_stops_stamp_points_routes = ox.routing.shortest_path(G, orig=bus_stops_stamp_points_orig, dest=bus_stops_stamp_points_dest, weight='length', cpus=threads)
+        print("Speichere Distanzen")
         for i in range(len(bus_stops)):
             for j in range(len(stamp_points)):
                 route = bus_stops_stamp_points_routes[i*len(stamp_points)+j]
@@ -72,9 +75,11 @@ with driver.session() as session:
         print(f"Entfernung von {len(bus_stops)} bus_stops zu {len(stamp_points)} stamp_point importiert.")
 
     if import_stamp_points_stamp_points:
+        print("Berechne kürzeste Wege")
         stamp_points_stamp_points_orig = [stamp_points_nodes[i] for i in range(len(stamp_points)) for j in range(len(stamp_points))]
         stamp_points_stamp_points_dest = [stamp_points_nodes[j] for i in range(len(stamp_points)) for j in range(len(stamp_points))]
-        stamp_points_stamp_points_routes = ox.routing.shortest_path(G, orig=stamp_points_stamp_points_orig, dest=stamp_points_stamp_points_dest, weight='length', cpus=2)
+        stamp_points_stamp_points_routes = ox.routing.shortest_path(G, orig=stamp_points_stamp_points_orig, dest=stamp_points_stamp_points_dest, weight='length', cpus=threads)
+        print("Speichere Distanzen")
         for i in range(len(stamp_points)):
             for j in range(len(stamp_points)):
                 route = stamp_points_stamp_points_routes[i*len(stamp_points)+j]
@@ -103,10 +108,12 @@ with driver.session() as session:
             session.run(query)
             print("Startpunkt eingefügt")
 
+        print("Berechne kürzeste Wege")
         origin_node = ox.distance.nearest_nodes(G, origin['lon'], origin['lat'])
         origin_stamp_points_orig = [origin_node] * len(stamp_points)
         origin_stamp_points_dest = stamp_points_nodes
-        origin_stamp_points_routes = ox.routing.shortest_path(G, orig=origin_stamp_points_orig, dest=origin_stamp_points_dest, weight='length', cpus=2)
+        origin_stamp_points_routes = ox.routing.shortest_path(G, orig=origin_stamp_points_orig, dest=origin_stamp_points_dest, weight='length', cpus=threads)
+        print("Speichere Distanzen")
         for i in range(len(stamp_points)):
             route = origin_stamp_points_routes[i]
             if len(route) == 1:
@@ -123,3 +130,4 @@ with driver.session() as session:
                               distance=distance)
             session.run(query)
         print(f"Entfernung vom Ursprung zu {len(stamp_points)} stamp_points importiert.")
+print("Laufzeit:", perf_counter()-start_time)
