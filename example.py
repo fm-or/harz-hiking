@@ -17,16 +17,18 @@ graph_data.import_data(
     stamp_point_gpx_filename = "HWN2024.gpx",
     max_section_length_m = 5000,
     force_update = False,
-    output = True)
+    log = False)
 
-# solve
+# solve problem
 solver = ProblemSolver(graph_data)
 solution = solver.solve(
-    days=2,
-    maximum_daily_distance=10000,
-    min_stamps=1,
-    max_bus_days=2,
-    max_parking_days=2,
+    days = 3,
+    maximum_daily_distance = 15000,
+    min_stamps = 6,
+    home_address = "Torfhaus 1, 38667 Torfhaus",
+    max_bus_days = 1,
+    max_parking_days = 1,
+    ignore_stamp_ids = {137,138},
     prioritized_solver_str = "GUROBI") # e.g. GLPK_CMD, CPLEX_CMD, GUROBI, PULP_CBC_CMD
 
 # output solution
